@@ -28,6 +28,7 @@ const userRoutes = require('./routes/users');
 const productRoutes = require('./routes/products');
 const orderRoutes = require('./routes/orders'); // <-- ADD THIS
 const salesRoutes = require('./routes/sales');  // <-- ADD THIS
+const path = require('path');
 
 // Use Routes
 app.use('/api/auth', authRoutes);
@@ -35,6 +36,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes); // <-- ADD THIS
 app.use('/api/sales', salesRoutes);  // <-- ADD THIS
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

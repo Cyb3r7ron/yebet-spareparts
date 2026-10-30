@@ -11,7 +11,7 @@ const prisma = new PrismaClient();
 // POST /api/orders
 router.post('/', authenticate, async (req, res) => {
   try {
-    const { items } = req.body; // items should be an array: [{ productId, quantity }]
+    const { items } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Please provide at least one item.' });
@@ -20,7 +20,6 @@ router.post('/', authenticate, async (req, res) => {
     let totalAmount = 0;
     const orderItemsData = [];
 
-    // 1. Validate stock and calculate total price
     for (const item of items) {
       const product = await prisma.product.findUnique({ where: { id: item.productId } });
       
@@ -36,27 +35,22 @@ router.post('/', authenticate, async (req, res) => {
       orderItemsData.push({
         productId: product.id,
         quantity: item.quantity,
-        price: product.price // Save the price at the time of purchase
+        price: product.price
       });
     }
 
-    // 2. Create the Order
     const order = await prisma.order.create({
       data: {
         userId: req.user.userId,
         totalAmount,
         orderType: 'ONLINE',
-        status: 'PENDING', // Customer orders start as pending until they pay in person
-        items: {
-          create: orderItemsData
-        }
+        status: 'PENDING',
+        items: { create: orderItemsData }
       },
       include: { items: true }
     });
 
-    // 3. Deduct Inventory and Record Sales
     for (const item of orderItemsData) {
-      // Deduct stock
       const product = await prisma.product.findUnique({ where: { id: item.productId } });
       const newQuantity = product.quantity - item.quantity;
 
@@ -64,11 +58,10 @@ router.post('/', authenticate, async (req, res) => {
         where: { id: item.productId },
         data: { 
           quantity: newQuantity,
-          isSoldOut: newQuantity <= 0 // Auto-mark as sold out if 0
+          isSoldOut: newQuantity <= 0
         }
       });
 
-      // Record the sale for analytics
       await prisma.salesRecord.create({
         data: {
           productId: item.productId,
@@ -116,7 +109,6 @@ router.post('/manual', authenticate, authorize('ADMIN', 'MANAGER'), async (req, 
       });
     }
 
-    // Create order (Marked as PAID immediately since they paid in person)
     const order = await prisma.order.create({
       data: {
         userId,
@@ -128,7 +120,6 @@ router.post('/manual', authenticate, authorize('ADMIN', 'MANAGER'), async (req, 
       include: { items: true }
     });
 
-    // Deduct inventory and record sales
     for (const item of orderItemsData) {
       const product = await prisma.product.findUnique({ where: { id: item.productId } });
       const newQuantity = product.quantity - item.quantity;
@@ -159,12 +150,11 @@ router.post('/manual', authenticate, authorize('ADMIN', 'MANAGER'), async (req, 
 // ========================================
 // ROUTE 3: GET ORDERS
 // ========================================
-// GET /api/orders (Admin sees all, Users see their own)
+// GET /api/orders
 router.get('/', authenticate, async (req, res) => {
   try {
     let whereClause = {};
     
-    // If user is not Admin/Manager, only show their own orders
     if (req.user.role === 'USER') {
       whereClause = { userId: req.user.userId };
     }
@@ -182,6 +172,61 @@ router.get('/', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Get orders error:', error);
     res.status(500).json({ error: 'Server error fetching orders.' });
+  }
+});
+
+// ========================================
+// ROUTE 4: CONFIRM ORDER (Admin/Manager Only)
+// Changes status to PAID and ensures sales data is recorded
+// ========================================
+// PATCH /api/orders/:id/confirm
+router.patch('/:id/confirm', authenticate, authorize('ADMIN', 'MANAGER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const order = await prisma.order.findUnique({
+      where: { id },
+      include: { items: true }
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found.' });
+    }
+
+    if (order.status === 'PAID') {
+      return res.status(400).json({ error: 'Order is already confirmed.' });
+    }
+
+    // Update order status to PAID
+    const updatedOrder = await prisma.order.update({
+      where: { id },
+      data: { status: 'PAID' }
+    });
+
+    // Ensure sales records exist for this order (Dashboard charts)
+    const existingSales = await prisma.salesRecord.findFirst({
+      where: { orderId: id }
+    });
+
+    if (!existingSales) {
+      for (const item of order.items) {
+        const product = await prisma.product.findUnique({ where: { id: item.productId } });
+        await prisma.salesRecord.create({
+          data: {
+            productId: item.productId,
+            productName: product?.name || 'Unknown Product',
+            quantity: item.quantity,
+            totalAmount: item.price * item.quantity,
+            orderId: order.id
+          }
+        });
+      }
+    }
+
+    res.json({ success: true, message: 'Order confirmed and marked as PAID!', order: updatedOrder });
+  } catch (error) {
+    console.error('Confirm order error:', error);
+    res.status(500).json({ error: 'Server error confirming order.' });
   }
 });
 

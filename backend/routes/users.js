@@ -1,32 +1,29 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
+const bcrypt = require('bcryptjs');
 const { authenticate, authorize } = require('../middleware/auth');
+const multer = require('multer');
+const path = require('path');
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
+// Setup Multer for Image Uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, 'uploads/'),
+  filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname))
+});
+const upload = multer({ storage });
+
 // ========================================
 // ROUTE 1: GET ALL USERS (Admin Only)
 // ========================================
-// GET /api/users
 router.get('/', authenticate, authorize('ADMIN'), async (req, res) => {
   try {
-    // Get all users, but EXCLUDE the password for security
     const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        phone: true,
-        role: true,
-        isApproved: true,
-        createdAt: true
-      },
-      orderBy: { createdAt: 'desc' } // Show newest users first
+      orderBy: { createdAt: 'desc' }
     });
-
-    res.json({ success: true, count: users.length, users });
+    res.json({ success: true, users });
   } catch (error) {
     console.error('Get users error:', error);
     res.status(500).json({ error: 'Server error fetching users.' });
@@ -34,68 +31,90 @@ router.get('/', authenticate, authorize('ADMIN'), async (req, res) => {
 });
 
 // ========================================
-// ROUTE 2: APPROVE A USER (Admin Only)
+// ROUTE 2: APPROVE USER (Admin Only)
 // ========================================
-// PATCH /api/users/:id/approve
 router.patch('/:id/approve', authenticate, authorize('ADMIN'), async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const user = await prisma.user.update({
-      where: { id },
+    await prisma.user.update({
+      where: { id: req.params.id },
       data: { isApproved: true }
     });
-
-    res.json({ success: true, message: `User ${user.email} has been approved!`, user });
+    res.json({ success: true, message: 'User approved.' });
   } catch (error) {
-    console.error('Approve user error:', error);
     res.status(500).json({ error: 'Server error approving user.' });
   }
 });
 
 // ========================================
-// ROUTE 3: CHANGE USER ROLE (Admin Only)
+// ROUTE 3: CHANGE ROLE (Admin Only)
 // ========================================
-// PATCH /api/users/:id/role
 router.patch('/:id/role', authenticate, authorize('ADMIN'), async (req, res) => {
   try {
-    const { id } = req.params;
     const { role } = req.body;
-
-    // Security: Only allow promoting to MANAGER or demoting to USER. 
-    // Prevents accidentally making someone an ADMIN.
-    if (role !== 'MANAGER' && role !== 'USER') {
-      return res.status(400).json({ error: 'Invalid role. Must be MANAGER or USER.' });
-    }
-
-    const user = await prisma.user.update({
-      where: { id },
+    await prisma.user.update({
+      where: { id: req.params.id },
       data: { role }
     });
-
-    res.json({ success: true, message: `User role updated to ${role}!`, user });
+    res.json({ success: true, message: 'Role updated.' });
   } catch (error) {
-    console.error('Update role error:', error);
     res.status(500).json({ error: 'Server error updating role.' });
   }
 });
 
 // ========================================
-// ROUTE 4: DELETE A USER (Admin Only)
+// ROUTE 4: UPDATE PROFILE (Admin/Manager)
 // ========================================
-// DELETE /api/users/:id
-router.delete('/:id', authenticate, authorize('ADMIN'), async (req, res) => {
+router.patch('/profile', authenticate, authorize('ADMIN', 'MANAGER'), upload.single('avatar'), async (req, res) => {
   try {
-    const { id } = req.params;
+    const { firstName, lastName, phone } = req.body;
+    const updateData = { firstName, lastName, phone };
 
-    await prisma.user.delete({
-      where: { id }
+    // If an image was uploaded, save the path
+    if (req.file) {
+      updateData.avatarUrl = `/uploads/${req.file.filename}`;
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.userId },
+      data: updateData
     });
 
-    res.json({ success: true, message: 'User deleted successfully.' });
+    // Send back the updated user (without password)
+    const { password, ...userWithoutPassword } = updatedUser;
+    res.json({ success: true, user: userWithoutPassword });
   } catch (error) {
-    console.error('Delete user error:', error);
-    res.status(500).json({ error: 'Server error deleting user.' });
+    console.error('Update profile error:', error);
+    res.status(500).json({ error: 'Server error updating profile.' });
+  }
+});
+
+// ========================================
+// ROUTE 5: CHANGE PASSWORD (Admin/Manager)
+// ========================================
+router.patch('/password', authenticate, authorize('ADMIN', 'MANAGER'), async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    // 1. Get current user
+    const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
+
+    // 2. Check if current password is correct
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ error: 'Current password is incorrect.' });
+    }
+
+    // 3. Hash and save new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: req.user.userId },
+      data: { password: hashedPassword }
+    });
+
+    res.json({ success: true, message: 'Password updated successfully!' });
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({ error: 'Server error changing password.' });
   }
 });
 
