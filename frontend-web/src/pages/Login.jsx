@@ -80,8 +80,10 @@ const Login = () => {
               Register here
             </button>
           </p>
+          <p className="mt-2">
+            <button onClick={() => navigate('/forgot-password')} className="text-blue-600 font-medium hover:underline">Forgot Password?</button>
+          </p>
         </div>
-
       </div>
     </div>
   );

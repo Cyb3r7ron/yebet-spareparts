@@ -7,40 +7,40 @@ const prisma = new PrismaClient();
 
 // ========================================
 // ROUTE: GET SALES ANALYTICS (Admin/Manager Only)
+// Supports custom date ranges: ?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
 // ========================================
-// GET /api/sales?period=daily (or monthly, yearly)
 router.get('/', authenticate, authorize('ADMIN', 'MANAGER'), async (req, res) => {
   try {
-    const { period = 'monthly' } = req.query; // Default to monthly
-    let startDate = new Date();
-    const now = new Date();
+    const { startDate, endDate } = req.query;
 
-    // Calculate the start date based on the period
-    if (period === 'daily') {
-      startDate.setHours(0, 0, 0, 0); // Start of today
-    } else if (period === 'monthly') {
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1); // 1st of current month
-    } else if (period === 'yearly') {
-      startDate = new Date(now.getFullYear(), 0, 1); // Jan 1st of current year
+    // Build the date filter for Prisma
+    const dateFilter = {};
+    if (startDate && endDate) {
+      dateFilter.saleDate = {
+        gte: new Date(startDate), // Greater than or equal to start date
+        lte: new Date(endDate)    // Less than or equal to end date
+      };
     }
 
-    // Fetch all sales records in this date range
+    // Fetch all sales records within the date range
     const sales = await prisma.salesRecord.findMany({
-      where: {
-        saleDate: { gte: startDate }
-      }
+      where: dateFilter,
+      orderBy: { saleDate: 'asc' }
     });
 
     // Calculate Summary
     const totalRevenue = sales.reduce((sum, sale) => sum + sale.totalAmount, 0);
     const totalItems = sales.reduce((sum, sale) => sum + sale.quantity, 0);
+    
+    // Count unique order IDs to get actual number of transactions
+    const uniqueOrders = new Set(sales.map(sale => sale.orderId).filter(Boolean));
+    const totalTransactions = uniqueOrders.size;
 
     res.json({
-      success: true,
       summary: {
         totalRevenue: totalRevenue.toFixed(2),
         totalItems,
-        totalTransactions: sales.length
+        totalTransactions
       },
       salesData: sales // Raw data for charts
     });

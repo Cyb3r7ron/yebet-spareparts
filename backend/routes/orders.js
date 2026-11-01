@@ -230,4 +230,31 @@ router.patch('/:id/confirm', authenticate, authorize('ADMIN', 'MANAGER'), async 
   }
 });
 
+// ========================================
+// ROUTE 5: UPDATE ORDER STATUS (Admin/Manager Only)
+// ========================================
+// PATCH /api/orders/:id/status
+router.patch('/:id/status', authenticate, authorize('ADMIN', 'MANAGER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    // Validate the status
+    const validStatuses = ['PENDING', 'PAID', 'SHIPPED', 'DELIVERED', 'CANCELLED'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status.' });
+    }
+
+    const updatedOrder = await prisma.order.update({
+      where: { id },
+      data: { status }
+    });
+
+    res.json({ success: true, message: `Order status updated to ${status}!`, order: updatedOrder });
+  } catch (error) {
+    console.error('Update status error:', error);
+    res.status(500).json({ error: 'Server error updating order status.' });
+  }
+});
+
 module.exports = router;

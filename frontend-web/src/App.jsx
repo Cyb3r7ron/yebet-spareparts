@@ -15,6 +15,8 @@ import CreateOrder from './pages/CreateOrder';
 import AllOrders from './pages/AllOrders';
 import Profile from './pages/Profile'; // ✅ 1. MAKE SURE THIS IS IMPORTED
 import Layout from './components/Layout';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 
 // 🛡️ PROTECTED ROUTE COMPONENT
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -43,6 +45,9 @@ function App() {
           {/* Public Routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+
+          <Route path="/forgot-password" element={<ForgotPassword />} /> 
+          <Route path="/reset-password" element={<ResetPassword />} /> 
           
           {/* Protected Routes with Sidebar Layout */}
           <Route element={<Layout />}>

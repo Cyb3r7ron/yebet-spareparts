@@ -3,31 +3,76 @@ import { useLocation } from 'react-router-dom';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
+import { downloadCSV } from '../utils/exportCSV';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+
+// Helper to get default date ranges
+const getDateRange = (range) => {
+  const end = new Date();
+  const start = new Date();
+  switch (range) {
+    case 'last7': start.setDate(end.getDate() - 7); break;
+    case 'last30': start.setDate(end.getDate() - 30); break;
+    case 'last90': start.setDate(end.getDate() - 90); break;
+    case 'thisYear': start.setFullYear(end.getFullYear(), 0, 1); break;
+    default: break;
+  }
+  return {
+    start: start.toISOString().split('T')[0],
+    end: end.toISOString().split('T')[0]
+  };
+};
 
 const Dashboard = () => {
   const { token } = useAuthStore();
   const location = useLocation();
   
-  const [period, setPeriod] = useState('monthly');
+  const [dateRange, setDateRange] = useState('last30');
+  const [startDate, setStartDate] = useState(getDateRange('last30').start);
+  const [endDate, setEndDate] = useState(getDateRange('last30').end);
+  const [showCustom, setShowCustom] = useState(false);
+  
   const [data, setData] = useState({ summary: { totalRevenue: 0, totalItems: 0, totalTransactions: 0 }, salesData: [] });
+  const [lowStockProducts, setLowStockProducts] = useState([]);
 
+  // Fetch data whenever dates change
   useEffect(() => {
-    const fetchSales = async () => {
+    const fetchData = async () => {
       try {
-        const response = await axios.get(`/api/sales?period=${period}`, {
+        // 1. Fetch Sales Data with specific dates
+        const salesResponse = await axios.get(`/api/sales?startDate=${startDate}&endDate=${endDate}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        setData(response.data);
+        setData(salesResponse.data);
+
+        // 2. Fetch Products to check for Low Stock
+        const productsResponse = await axios.get('/api/products', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        const lowStock = productsResponse.data.products.filter(
+          (p) => p.quantity <= (p.minStock || 5) && p.quantity > 0
+        );
+        setLowStockProducts(lowStock);
+
       } catch (error) {
-        console.error('Error fetching sales:', error);
+        console.error('Error fetching dashboard data:', error);
       }
     };
-    fetchSales();
-  }, [period, location.pathname, token]);
+    fetchData();
+  }, [startDate, endDate, location.pathname, token]);
 
-  // Prepare data for Pie Chart (Sales by Product)
+  // Handle preset button clicks
+  const handlePresetChange = (preset) => {
+    setDateRange(preset);
+    setShowCustom(false);
+    const dates = getDateRange(preset);
+    setStartDate(dates.start);
+    setEndDate(dates.end);
+  };
+
+  // Prepare data for Pie Chart
   const pieData = data.salesData.reduce((acc, sale) => {
     const existing = acc.find(item => item.name === sale.productName);
     if (existing) existing.value += sale.totalAmount;
@@ -35,24 +80,11 @@ const Dashboard = () => {
     return acc;
   }, []);
 
-  // Sort and get Top 5 Products for the list below
   const topProducts = [...pieData].sort((a, b) => b.value - a.value).slice(0, 5);
 
-  // Helper to format dates for the Bar Chart X-Axis
-  const formatDate = (dateString, currentPeriod) => {
-    const date = new Date(dateString);
-    if (currentPeriod === 'daily') {
-      return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-    } else if (currentPeriod === 'monthly') {
-      return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-    } else {
-      return date.getFullYear().toString();
-    }
-  };
-
-  // Prepare data for Bar Chart (Sales over Time)
+  // Prepare data for Bar Chart (Grouped by Day)
   const timeGroupedData = data.salesData.reduce((acc, sale) => {
-    const dateKey = formatDate(sale.saleDate, period);
+    const dateKey = new Date(sale.saleDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     const existing = acc.find(item => item.name === dateKey);
     if (existing) {
       existing.sales += sale.totalAmount;
@@ -64,40 +96,92 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-6">
-      {/* Period Selector */}
-      <div className="flex gap-4">
-        {['daily', 'monthly', 'yearly'].map((p) => (
-          <button
-            key={p}
-            onClick={() => setPeriod(p)}
-            className={`px-6 py-2 rounded-lg font-semibold transition capitalize ${
-              period === p ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-gray-600 hover:bg-gray-200'
-            }`}
+      {/* Date Range Selector & Export */}
+      <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => handlePresetChange('last7')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${dateRange === 'last7' && !showCustom ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>Last 7 Days</button>
+            <button onClick={() => handlePresetChange('last30')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${dateRange === 'last30' && !showCustom ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>Last 30 Days</button>
+            <button onClick={() => handlePresetChange('last90')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${dateRange === 'last90' && !showCustom ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>Last 90 Days</button>
+            <button onClick={() => handlePresetChange('thisYear')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${dateRange === 'thisYear' && !showCustom ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>This Year</button>
+            <button onClick={() => setShowCustom(!showCustom)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${showCustom ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>Custom Range</button>
+          </div>
+
+          {showCustom && (
+            <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-lg">
+              <input type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); setDateRange('custom'); }} className="px-3 py-1 border rounded text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+              <span className="text-gray-500 text-sm">to</span>
+              <input type="date" value={endDate} onChange={(e) => { setEndDate(e.target.value); setDateRange('custom'); }} className="px-3 py-1 border rounded text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          )}
+
+          <button 
+            onClick={() => {
+              const exportData = data.salesData.map(sale => ({
+                Date: new Date(sale.saleDate).toISOString().split('T')[0],
+                Product: sale.productName,
+                Quantity: sale.quantity,
+                Revenue: sale.totalAmount
+              }));
+
+              const totalQuantity = exportData.reduce((sum, item) => sum + Number(item.Quantity), 0);
+              const totalRevenue = exportData.reduce((sum, item) => sum + Number(item.Revenue), 0);
+
+              exportData.push({ Date: 'TOTAL', Product: '---', Quantity: totalQuantity, Revenue: totalRevenue });
+              downloadCSV(exportData, `sales_report_${startDate}_to_${endDate}`);
+            }}
+            className="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg font-semibold transition flex items-center gap-2 shadow-md whitespace-nowrap"
           >
-            {p}
+            📥 Export CSV
           </button>
-        ))}
+        </div>
       </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-gradient-to-br from-green-400 to-green-600 text-white p-6 rounded-2xl shadow-lg">
           <h3 className="text-lg font-medium opacity-90">Total Revenue</h3>
-          <p className="text-4xl font-bold mt-2">${data.summary.totalRevenue}</p>
+          <p className="text-4xl font-bold mt-2">${data.summary.totalRevenue.toLocaleString()}</p>
         </div>
         <div className="bg-gradient-to-br from-blue-400 to-blue-600 text-white p-6 rounded-2xl shadow-lg">
           <h3 className="text-lg font-medium opacity-90">Items Sold</h3>
-          <p className="text-4xl font-bold mt-2">{data.summary.totalItems}</p>
+          <p className="text-4xl font-bold mt-2">{data.summary.totalItems.toLocaleString()}</p>
         </div>
         <div className="bg-gradient-to-br from-purple-400 to-purple-600 text-white p-6 rounded-2xl shadow-lg">
           <h3 className="text-lg font-medium opacity-90">Transactions</h3>
-          <p className="text-4xl font-bold mt-2">{data.summary.totalTransactions}</p>
+          <p className="text-4xl font-bold mt-2">{data.summary.totalTransactions.toLocaleString()}</p>
         </div>
       </div>
 
+      {/* Low Stock Alerts */}
+      {lowStockProducts.length > 0 && (
+        <div className="bg-red-50 border-l-4 border-red-500 p-6 rounded-2xl shadow-md">
+          <div className="flex items-center gap-3 mb-4">
+            <span className="text-3xl">⚠️</span>
+            <h2 className="text-xl font-bold text-red-800">Low Stock Alerts</h2>
+            <span className="bg-red-200 text-red-800 text-xs font-bold px-2 py-1 rounded-full">
+              {lowStockProducts.length} item(s) need reordering
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {lowStockProducts.map((product) => (
+              <div key={product.id} className="bg-white p-4 rounded-xl shadow-sm border border-red-100 flex justify-between items-center">
+                <div>
+                  <p className="font-bold text-gray-800">{product.name}</p>
+                  <p className="text-xs text-gray-500">SKU: {product.sku}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-2xl font-bold text-red-600">{product.quantity}</p>
+                  <p className="text-xs text-gray-500">left in stock</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Pie Chart */}
         <div className="bg-white p-6 rounded-2xl shadow-md">
           <h2 className="text-xl font-bold text-gray-800 mb-4">Revenue by Product</h2>
           {pieData.length > 0 ? (
@@ -116,21 +200,13 @@ const Dashboard = () => {
           )}
         </div>
 
-        {/* Bar Chart with BOLD Dates */}
         <div className="bg-white p-6 rounded-2xl shadow-md">
-          <h2 className="text-xl font-bold text-gray-800 mb-4">Sales Over Time ({period})</h2>
+          <h2 className="text-xl font-bold text-gray-800 mb-4">Sales Over Time</h2>
           {timeGroupedData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={timeGroupedData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                {/* BOLD AND LARGER TEXT FOR DATES */}
-                <XAxis 
-                  dataKey="name" 
-                  angle={-15} 
-                  textAnchor="end" 
-                  height={60} 
-                  tick={{ fontSize: 13, fontWeight: 'bold', fill: '#1f2937' }} 
-                />
+                <XAxis dataKey="name" angle={-15} textAnchor="end" height={60} tick={{ fontSize: 12, fontWeight: 'bold', fill: '#1f2937' }} />
                 <YAxis />
                 <Tooltip />
                 <Bar dataKey="sales" fill="#3b82f6" radius={[8, 8, 0, 0]} />
@@ -142,9 +218,9 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* NEW: Top Selling Products List */}
+      {/* Top Selling Products List */}
       <div className="bg-white p-6 rounded-2xl shadow-md">
-        <h2 className="text-xl font-bold text-gray-800 mb-4">🏆 Top Selling Products ({period})</h2>
+        <h2 className="text-xl font-bold text-gray-800 mb-4">🏆 Top Selling Products</h2>
         {topProducts.length > 0 ? (
           <div className="space-y-3">
             {topProducts.map((product, index) => (
@@ -161,7 +237,7 @@ const Dashboard = () => {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-xl font-bold text-green-600">${product.value.toFixed(2)}</p>
+                  <p className="text-xl font-bold text-green-600">${product.value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
                 </div>
               </div>
             ))}

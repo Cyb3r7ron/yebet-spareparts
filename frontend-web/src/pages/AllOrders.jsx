@@ -9,7 +9,6 @@ const AllOrders = () => {
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState(null);
 
-  // 1. Move fetchOrders INSIDE useEffect to satisfy the strict linter
   useEffect(() => {
     const fetchOrders = async () => {
       try {
@@ -18,45 +17,44 @@ const AllOrders = () => {
         });
         setOrders(res.data.orders);
       } catch (error) {
-        // 2. Actually use the 'error' variable so the linter doesn't complain
         console.error('Failed to load orders:', error);
         toast.error('Failed to load orders');
       } finally {
         setLoading(false);
       }
     };
-    
     fetchOrders();
   }, [token]);
 
-  const handleConfirmOrder = async (orderId) => {
+  const handleStatusChange = async (orderId, newStatus) => {
     try {
-      const response = await axios.patch(`/api/orders/${orderId}/confirm`, {}, {
+      await axios.patch(`/api/orders/${orderId}/status`, { status: newStatus }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
-      toast.success(response.data.message);
+      toast.success(`Order marked as ${newStatus}!`);
       
       // Update local state instantly
       setOrders(orders.map(order => 
-        order.id === orderId ? { ...order, status: 'PAID' } : order
+        order.id === orderId ? { ...order, status: newStatus } : order
       ));
       
-      // If the modal is open, update it too
       if (selectedOrder && selectedOrder.id === orderId) {
-        setSelectedOrder({ ...selectedOrder, status: 'PAID' });
+        setSelectedOrder({ ...selectedOrder, status: newStatus });
       }
     } catch (error) {
-      console.error('Failed to confirm order:', error);
-      toast.error(error.response?.data?.error || 'Failed to confirm order');
+      console.error('Failed to update status:', error);
+      toast.error('Failed to update status');
     }
   };
 
   const getStatusColor = (status) => {
     switch(status) {
       case 'PAID': return 'bg-green-100 text-green-800';
-      case 'PENDING': return 'bg-yellow-100 text-yellow-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'SHIPPED': return 'bg-blue-100 text-blue-800';
+      case 'DELIVERED': return 'bg-purple-100 text-purple-800';
+      case 'CANCELLED': return 'bg-red-100 text-red-800';
+      default: return 'bg-yellow-100 text-yellow-800';
     }
   };
 
@@ -83,7 +81,6 @@ const AllOrders = () => {
                 <tr>
                   <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Order ID</th>
                   <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Customer</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Type</th>
                   <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Date</th>
                   <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Total</th>
                   <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Status</th>
@@ -104,13 +101,6 @@ const AllOrders = () => {
                         <p className="text-xs text-gray-500">{order.user?.email}</p>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                        order.orderType === 'IN_PERSON' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
-                      }`}>
-                        {order.orderType === 'IN_PERSON' ? '🏪 In-Person' : '💻 Online'}
-                      </span>
-                    </td>
                     <td className="px-6 py-4 text-sm text-gray-500">
                       {new Date(order.createdAt).toLocaleDateString()}
                     </td>
@@ -118,19 +108,20 @@ const AllOrders = () => {
                       ${order.totalAmount.toFixed(2)}
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`text-xs font-bold px-2 py-1 rounded-full ${getStatusColor(order.status)}`}>
-                        {order.status}
-                      </span>
+                      {/* STATUS DROPDOWN FOR ADMIN */}
+                      <select
+                        value={order.status}
+                        onChange={(e) => handleStatusChange(order.id, e.target.value)}
+                        className={`text-xs font-bold px-2 py-1 rounded-full border-0 outline-none cursor-pointer ${getStatusColor(order.status)}`}
+                      >
+                        <option value="PENDING">PENDING</option>
+                        <option value="PAID">PAID</option>
+                        <option value="SHIPPED">SHIPPED</option>
+                        <option value="DELIVERED">DELIVERED</option>
+                        <option value="CANCELLED">CANCELLED</option>
+                      </select>
                     </td>
-                    <td className="px-6 py-4 text-right space-x-2">
-                      {order.status === 'PENDING' && (
-                        <button
-                          onClick={() => handleConfirmOrder(order.id)}
-                          className="bg-green-600 hover:bg-green-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition"
-                        >
-                          Confirm Payment
-                        </button>
-                      )}
+                    <td className="px-6 py-4 text-right">
                       <button
                         onClick={() => setSelectedOrder(order)}
                         className="text-blue-600 hover:text-blue-800 text-sm font-semibold"
@@ -190,16 +181,6 @@ const AllOrders = () => {
                 <span className="text-lg font-bold text-gray-800">Total Amount</span>
                 <span className="text-2xl font-bold text-blue-600">${selectedOrder.totalAmount.toFixed(2)}</span>
               </div>
-
-              {/* Confirm Button inside Modal too */}
-              {selectedOrder.status === 'PENDING' && (
-                <button
-                  onClick={() => handleConfirmOrder(selectedOrder.id)}
-                  className="w-full mt-4 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl transition shadow-md"
-                >
-                  ✅ Confirm Payment & Record Sale
-                </button>
-              )}
             </div>
           </div>
         </div>
