@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import axios from 'axios';
 
 // Set default base URL for all axios requests
-axios.defaults.baseURL = 'http://localhost:5173'; 
+axios.defaults.baseURL = 'https://yebet-spareparts-api.onrender.com'; 
 
 export const useAuthStore = create((set, get) => ({
   user: JSON.parse(localStorage.getItem('user')) || null,
