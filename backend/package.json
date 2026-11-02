@@ -4,15 +4,13 @@
   "description": "Yebet Spareparts Backend",
   "main": "server.js",
   "scripts": {
-    "dev": "nodemon server.js",
-    "start": "node server.js"
-  },
+  "dev": "nodemon server.js",
+  "start": "node server.js"
+ },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "engines": {
-    "node": "20.x"
-  },
+  
   "dependencies": {
     "@prisma/client": "^5.7.0",
     "bcryptjs": "^2.4.3",
