@@ -1,8 +1,10 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
+const { sendResetEmail } = require('../utils/mailer');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -10,34 +12,21 @@ const prisma = new PrismaClient();
 // ========================================
 // ROUTE 1: REGISTER (Public)
 // ========================================
-// POST /api/auth/register
-// Anyone can register, but they become USER role and need approval
 router.post('/register', async (req, res) => {
   try {
     const { email, password, firstName, lastName, phone } = req.body;
 
-    // 1. Validate required fields
     if (!email || !password || !firstName || !lastName) {
-      return res.status(400).json({ 
-        error: 'Please provide email, password, firstName, and lastName.' 
-      });
+      return res.status(400).json({ error: 'Please provide email, password, firstName, and lastName.' });
     }
 
-    // 2. Check if email already exists
-    const existingUser = await prisma.user.findUnique({ 
-      where: { email: email.toLowerCase() } 
-    });
-    
+    const existingUser = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
     if (existingUser) {
       return res.status(400).json({ error: 'Email already registered.' });
     }
 
-    // 3. Hash the password (never store plain text passwords!)
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // 4. Create the user
-    // - role defaults to "USER" (from schema)
-    // - isApproved defaults to false (from schema)
     const user = await prisma.user.create({
       data: {
         email: email.toLowerCase(),
@@ -50,7 +39,6 @@ router.post('/register', async (req, res) => {
       }
     });
 
-    // 5. Return success (don't send password back!)
     res.status(201).json({
       message: 'Registration successful! Waiting for admin approval.',
       user: {
@@ -71,51 +59,36 @@ router.post('/register', async (req, res) => {
 // ========================================
 // ROUTE 2: LOGIN (Public)
 // ========================================
-// POST /api/auth/login
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // 1. Validate input
     if (!email || !password) {
       return res.status(400).json({ error: 'Please provide email and password.' });
     }
 
-    // 2. Find user by email
-    const user = await prisma.user.findUnique({ 
-      where: { email: email.toLowerCase() } 
-    });
+    const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
     
     if (!user) {
       return res.status(400).json({ error: 'Invalid credentials.' });
     }
 
-    // 3. Check if password matches
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
       return res.status(400).json({ error: 'Invalid credentials.' });
     }
 
-    // 4. Check if user is approved (except for ADMIN role)
     if (!user.isApproved && user.role !== 'ADMIN') {
-      return res.status(403).json({ 
-        error: 'Your account is pending admin approval. Please wait.' 
-      });
+      return res.status(403).json({ error: 'Your account is pending admin approval. Please wait.' });
     }
 
-    // 5. Create JWT token (valid for 7 days)
     const token = jwt.sign(
-      { 
-        userId: user.id, 
-        email: user.email, 
-        role: user.role,
-        firstName: user.firstName
-      },
+      { userId: user.id, email: user.email, role: user.role, firstName: user.firstName },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
 
-    // 6. Return token and user info
+    // ✅ FIX: Include avatarUrl and phone in the login response
     res.json({
       message: 'Login successful!',
       token,
@@ -125,7 +98,9 @@ router.post('/login', async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
-        isApproved: user.isApproved
+        isApproved: user.isApproved,
+        phone: user.phone,
+        avatarUrl: user.avatarUrl // ✅ ADDED THIS
       }
     });
   } catch (error) {
@@ -137,10 +112,9 @@ router.post('/login', async (req, res) => {
 // ========================================
 // ROUTE 3: GET CURRENT USER (Protected)
 // ========================================
-// GET /api/auth/me
-// Returns info about the currently logged-in user
 router.get('/me', authenticate, async (req, res) => {
   try {
+    // ✅ FIX: Added avatarUrl to the select statement
     const user = await prisma.user.findUnique({
       where: { id: req.user.userId },
       select: {
@@ -151,6 +125,7 @@ router.get('/me', authenticate, async (req, res) => {
         role: true,
         isApproved: true,
         phone: true,
+        avatarUrl: true, // ✅ ADDED THIS
         createdAt: true
       }
     });
@@ -166,44 +141,30 @@ router.get('/me', authenticate, async (req, res) => {
   }
 });
 
-const crypto = require('crypto'); // Add this at the very top of the file with other requires
-const { sendResetEmail } = require('../utils/mailer'); // Add this at the top too
-
-// ... (your existing login/register routes) ...
-
 // ========================================
-// ROUTE: FORGOT PASSWORD
+// ROUTE 4: FORGOT PASSWORD
 // ========================================
-// POST /api/auth/forgot-password
 router.post('/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
     const user = await prisma.user.findUnique({ where: { email } });
 
     if (!user) {
-      // Don't reveal if the email exists or not for security
       return res.json({ success: true, message: 'If an account with that email exists, a reset link has been sent.' });
     }
 
-    // Generate a secure random token
     const resetToken = crypto.randomBytes(32).toString('hex');
-    
-    // Hash the token before saving to DB (best practice)
     const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
 
-    // Save token and set expiry to 1 hour from now
     await prisma.user.update({
       where: { id: user.id },
       data: {
         resetToken: hashedToken,
-        resetTokenExpiry: new Date(Date.now() + 3600000) // 1 hour
+        resetTokenExpiry: new Date(Date.now() + 3600000)
       }
     });
 
-    // Create the reset URL for the frontend
     const resetUrl = `http://localhost:5173/reset-password?token=${resetToken}`;
-
-    // Send the email
     await sendResetEmail(user.email, resetUrl);
 
     res.json({ success: true, message: 'If an account with that email exists, a reset link has been sent.' });
@@ -214,21 +175,18 @@ router.post('/forgot-password', async (req, res) => {
 });
 
 // ========================================
-// ROUTE: RESET PASSWORD
+// ROUTE 5: RESET PASSWORD
 // ========================================
-// POST /api/auth/reset-password
 router.post('/reset-password', async (req, res) => {
   try {
     const { token, newPassword } = req.body;
 
-    // Hash the token from the URL to compare with the DB
     const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
 
-    // Find user with this token that hasn't expired
     const user = await prisma.user.findFirst({
       where: {
         resetToken: hashedToken,
-        resetTokenExpiry: { gt: new Date() } // gt = greater than (not expired)
+        resetTokenExpiry: { gt: new Date() }
       }
     });
 
@@ -236,10 +194,8 @@ router.post('/reset-password', async (req, res) => {
       return res.status(400).json({ error: 'Invalid or expired reset token.' });
     }
 
-    // Hash the new password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    // Update password and clear the reset token fields
     await prisma.user.update({
       where: { id: user.id },
       data: {

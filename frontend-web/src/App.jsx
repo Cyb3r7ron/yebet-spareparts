@@ -6,6 +6,8 @@ import 'react-toastify/dist/ReactToastify.css';
 import { useAuthStore } from './store/authStore';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import Dashboard from './pages/Dashboard';
 import Products from './pages/Products';
 import Users from './pages/Users';
@@ -13,10 +15,20 @@ import Shop from './pages/Shop';
 import MyOrders from './pages/MyOrders';
 import CreateOrder from './pages/CreateOrder';
 import AllOrders from './pages/AllOrders';
-import Profile from './pages/Profile'; // ✅ 1. MAKE SURE THIS IS IMPORTED
+import Profile from './pages/Profile';
+import NotFound from './pages/NotFound';
 import Layout from './components/Layout';
-import ForgotPassword from './pages/ForgotPassword';
-import ResetPassword from './pages/ResetPassword';
+
+// 🏠 SMART ROOT REDIRECT
+const HomeRedirect = () => {
+  const { user, token } = useAuthStore();
+  
+  if (!token) return <Navigate to="/login" replace />;
+  if (user?.role === 'ADMIN' || user?.role === 'MANAGER') {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <Navigate to="/shop" replace />;
+};
 
 // 🛡️ PROTECTED ROUTE COMPONENT
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -42,14 +54,16 @@ function App() {
     <Router>
       <div className="min-h-screen bg-gray-50">
         <Routes>
-          {/* Public Routes */}
+          {/* 1. SMART ROOT REDIRECT */}
+          <Route path="/" element={<HomeRedirect />} />
+
+          {/* 2. Public Routes (No Sidebar) */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
-
-          <Route path="/forgot-password" element={<ForgotPassword />} /> 
-          <Route path="/reset-password" element={<ResetPassword />} /> 
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           
-          {/* Protected Routes with Sidebar Layout */}
+          {/* 3. Protected Routes with Sidebar Layout */}
           <Route element={<Layout />}>
             
             {/* ADMIN / MANAGER ONLY ROUTES */}
@@ -92,7 +106,6 @@ function App() {
               </ProtectedRoute>
             } />
 
-            {/* ✅ 2. THE PROFILE ROUTE MUST BE EXACTLY HERE ✅ */}
             <Route path="/profile" element={
               <ProtectedRoute allowedRoles={['USER', 'MANAGER', 'ADMIN']}>
                 <Profile />
@@ -101,8 +114,8 @@ function App() {
 
           </Route>
 
-          {/* Default redirect */}
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          {/* 4. CATCH-ALL 404 ROUTE (Must be last) */}
+          <Route path="*" element={<NotFound />} />
         </Routes>
         
         <ToastContainer position="top-right" autoClose={3000} />

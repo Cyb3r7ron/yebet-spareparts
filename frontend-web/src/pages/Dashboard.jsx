@@ -4,10 +4,10 @@ import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
 import { downloadCSV } from '../utils/exportCSV';
+import Skeleton from '../components/Skeleton'; // ✅ ADDED SKELETON IMPORT
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
-// Helper to get default date ranges
 const getDateRange = (range) => {
   const end = new Date();
   const start = new Date();
@@ -35,18 +35,17 @@ const Dashboard = () => {
   
   const [data, setData] = useState({ summary: { totalRevenue: 0, totalItems: 0, totalTransactions: 0 }, salesData: [] });
   const [lowStockProducts, setLowStockProducts] = useState([]);
+  const [loading, setLoading] = useState(true); // ✅ ADDED LOADING STATE
 
-  // Fetch data whenever dates change
   useEffect(() => {
     const fetchData = async () => {
+      setLoading(true); // ✅ START LOADING
       try {
-        // 1. Fetch Sales Data with specific dates
         const salesResponse = await axios.get(`/api/sales?startDate=${startDate}&endDate=${endDate}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         setData(salesResponse.data);
 
-        // 2. Fetch Products to check for Low Stock
         const productsResponse = await axios.get('/api/products', {
           headers: { Authorization: `Bearer ${token}` }
         });
@@ -58,12 +57,13 @@ const Dashboard = () => {
 
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
+      } finally {
+        setLoading(false); // ✅ STOP LOADING
       }
     };
     fetchData();
   }, [startDate, endDate, location.pathname, token]);
 
-  // Handle preset button clicks
   const handlePresetChange = (preset) => {
     setDateRange(preset);
     setShowCustom(false);
@@ -72,7 +72,6 @@ const Dashboard = () => {
     setEndDate(dates.end);
   };
 
-  // Prepare data for Pie Chart
   const pieData = data.salesData.reduce((acc, sale) => {
     const existing = acc.find(item => item.name === sale.productName);
     if (existing) existing.value += sale.totalAmount;
@@ -82,7 +81,6 @@ const Dashboard = () => {
 
   const topProducts = [...pieData].sort((a, b) => b.value - a.value).slice(0, 5);
 
-  // Prepare data for Bar Chart (Grouped by Day)
   const timeGroupedData = data.salesData.reduce((acc, sale) => {
     const dateKey = new Date(sale.saleDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     const existing = acc.find(item => item.name === dateKey);
@@ -123,10 +121,8 @@ const Dashboard = () => {
                 Quantity: sale.quantity,
                 Revenue: sale.totalAmount
               }));
-
               const totalQuantity = exportData.reduce((sum, item) => sum + Number(item.Quantity), 0);
               const totalRevenue = exportData.reduce((sum, item) => sum + Number(item.Revenue), 0);
-
               exportData.push({ Date: 'TOTAL', Product: '---', Quantity: totalQuantity, Revenue: totalRevenue });
               downloadCSV(exportData, `sales_report_${startDate}_to_${endDate}`);
             }}
@@ -137,24 +133,32 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-gradient-to-br from-green-400 to-green-600 text-white p-6 rounded-2xl shadow-lg">
-          <h3 className="text-lg font-medium opacity-90">Total Revenue</h3>
-          <p className="text-4xl font-bold mt-2">${data.summary.totalRevenue.toLocaleString()}</p>
+      {/* ✅ SKELETON LOADING STATE FOR SUMMARY CARDS ✅ */}
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Skeleton className="h-32 w-full rounded-2xl" />
+          <Skeleton className="h-32 w-full rounded-2xl" />
+          <Skeleton className="h-32 w-full rounded-2xl" />
         </div>
-        <div className="bg-gradient-to-br from-blue-400 to-blue-600 text-white p-6 rounded-2xl shadow-lg">
-          <h3 className="text-lg font-medium opacity-90">Items Sold</h3>
-          <p className="text-4xl font-bold mt-2">{data.summary.totalItems.toLocaleString()}</p>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-gradient-to-br from-green-400 to-green-600 text-white p-6 rounded-2xl shadow-lg">
+            <h3 className="text-lg font-medium opacity-90">Total Revenue</h3>
+            <p className="text-4xl font-bold mt-2">${Number(data.summary.totalRevenue).toLocaleString()}</p>
+          </div>
+          <div className="bg-gradient-to-br from-blue-400 to-blue-600 text-white p-6 rounded-2xl shadow-lg">
+            <h3 className="text-lg font-medium opacity-90">Items Sold</h3>
+            <p className="text-4xl font-bold mt-2">{data.summary.totalItems.toLocaleString()}</p>
+          </div>
+          <div className="bg-gradient-to-br from-purple-400 to-purple-600 text-white p-6 rounded-2xl shadow-lg">
+            <h3 className="text-lg font-medium opacity-90">Transactions</h3>
+            <p className="text-4xl font-bold mt-2">{data.summary.totalTransactions.toLocaleString()}</p>
+          </div>
         </div>
-        <div className="bg-gradient-to-br from-purple-400 to-purple-600 text-white p-6 rounded-2xl shadow-lg">
-          <h3 className="text-lg font-medium opacity-90">Transactions</h3>
-          <p className="text-4xl font-bold mt-2">{data.summary.totalTransactions.toLocaleString()}</p>
-        </div>
-      </div>
+      )}
 
-      {/* Low Stock Alerts */}
-      {lowStockProducts.length > 0 && (
+      {/* Low Stock Alerts (Only show when not loading) */}
+      {!loading && lowStockProducts.length > 0 && (
         <div className="bg-red-50 border-l-4 border-red-500 p-6 rounded-2xl shadow-md">
           <div className="flex items-center gap-3 mb-4">
             <span className="text-3xl">⚠️</span>
@@ -184,7 +188,9 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-2xl shadow-md">
           <h2 className="text-xl font-bold text-gray-800 mb-4">Revenue by Product</h2>
-          {pieData.length > 0 ? (
+          {loading ? (
+            <Skeleton className="h-[300px] w-full rounded-xl" />
+          ) : pieData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie data={pieData} cx="50%" cy="50%" outerRadius={100} fill="#8884d8" dataKey="value" label>
@@ -202,7 +208,9 @@ const Dashboard = () => {
 
         <div className="bg-white p-6 rounded-2xl shadow-md">
           <h2 className="text-xl font-bold text-gray-800 mb-4">Sales Over Time</h2>
-          {timeGroupedData.length > 0 ? (
+          {loading ? (
+            <Skeleton className="h-[300px] w-full rounded-xl" />
+          ) : timeGroupedData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={timeGroupedData}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -221,7 +229,13 @@ const Dashboard = () => {
       {/* Top Selling Products List */}
       <div className="bg-white p-6 rounded-2xl shadow-md">
         <h2 className="text-xl font-bold text-gray-800 mb-4">🏆 Top Selling Products</h2>
-        {topProducts.length > 0 ? (
+        {loading ? (
+          <div className="space-y-3">
+            <Skeleton className="h-16 w-full rounded-xl" />
+            <Skeleton className="h-16 w-full rounded-xl" />
+            <Skeleton className="h-16 w-full rounded-xl" />
+          </div>
+        ) : topProducts.length > 0 ? (
           <div className="space-y-3">
             {topProducts.map((product, index) => (
               <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition">
@@ -237,7 +251,7 @@ const Dashboard = () => {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-xl font-bold text-green-600">${product.value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                  <p className="text-xl font-bold text-green-600">${Number(product.value).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
                 </div>
               </div>
             ))}
