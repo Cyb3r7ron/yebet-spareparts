@@ -71,25 +71,28 @@ router.get('/:id', async (req, res) => {
 // ROUTE 3: CREATE NEW PRODUCT (Admin/Manager Only)
 // ========================================
 // ✅ 3. ADDED: upload.single('image') middleware
+// ========================================
+// ROUTE 3: CREATE NEW PRODUCT (Admin/Manager Only)
+// ========================================
 router.post('/', authenticate, authorize('ADMIN', 'MANAGER'), upload.single('image'), async (req, res) => {
   try {
-    const { name, description, sku, category, price, quantity, minStock, imageUrl } = req.body;
+    // ✅ DEBUGGER: This will show up in your Render logs!
+    console.log('--- CREATE PRODUCT ROUTE HIT ---');
+    console.log('REQ BODY:', req.body);
+    console.log('REQ FILE:', req.file ? req.file.filename : 'NO FILE');
 
-    // ✅ 4. Handle the uploaded file: if a file was uploaded, use its path, otherwise use the provided imageUrl
+    const { name, description, sku, category, price, quantity, minStock, imageUrl } = req.body;
     const finalImageUrl = req.file ? `/uploads/${req.file.filename}` : (imageUrl || '');
 
-    // Validate required fields
     if (!name || !sku || !category || price === undefined || quantity === undefined) {
       return res.status(400).json({ error: 'Please provide name, sku, category, price, and quantity.' });
     }
 
-    // Check if SKU already exists
     const existingProduct = await prisma.product.findUnique({ where: { sku } });
     if (existingProduct) {
       return res.status(400).json({ error: 'A product with this SKU already exists.' });
     }
 
-    // Auto-calculate isSoldOut
     const isSoldOut = parseInt(quantity) <= 0;
 
     const product = await prisma.product.create({
@@ -101,7 +104,7 @@ router.post('/', authenticate, authorize('ADMIN', 'MANAGER'), upload.single('ima
         price: parseFloat(price),
         quantity: parseInt(quantity),
         minStock: parseInt(minStock) || 5,
-        imageUrl: finalImageUrl, // ✅ USE THE NEW IMAGE URL
+        imageUrl: finalImageUrl,
         isSoldOut
       }
     });
