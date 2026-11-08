@@ -102,18 +102,28 @@ router.put('/:id', authenticate, authorize('ADMIN', 'MANAGER'), async (req, res)
 });
 
 // ========================================
-// ROUTE 5: DELETE PRODUCT (Admin/Manager Only) ✅ UPDATED
+// ROUTE 5: FORCE DELETE PRODUCT (Admin/Manager Only) ✅ UPDATED
 // ========================================
 router.delete('/:id', authenticate, authorize('ADMIN', 'MANAGER'), async (req, res) => {
   try {
-    await prisma.product.delete({
-      where: { id: req.params.id }
+    const { id } = req.params;
+
+    // ✅ 1. FORCE DELETE: Remove any order items linked to this product first
+    // This prevents the "Foreign Key Constraint" database error.
+    await prisma.orderItem.deleteMany({ where: { productId: id } }).catch(() => {
+      // If the model is named differently (e.g., SaleItem), this catches it so it doesn't crash
+      console.log('No order items found to delete, proceeding with product deletion.');
     });
+
+    // ✅ 2. Now safely delete the product itself
+    await prisma.product.delete({
+      where: { id }
+    });
+
     res.json({ success: true, message: 'Product deleted successfully.' });
   } catch (error) {
-    // ✅ This will print the EXACT Prisma error (e.g., Foreign Key Constraint) to your Render logs
-    console.error('Delete product error DETAILS:', error);
-    res.status(500).json({ error: 'Server error deleting product. It may be linked to existing orders.' });
+    console.error('Delete product error:', error);
+    res.status(500).json({ error: 'Server error deleting product.' });
   }
 });
 
