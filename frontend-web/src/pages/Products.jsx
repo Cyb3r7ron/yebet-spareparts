@@ -62,15 +62,24 @@ const Products = () => {
     setShowModal(true);
   };
 
+  // ✅ FIXED: Removed the unused 'response' variable to stop the linter error
   const handleDelete = async (id, name) => {
     if (!window.confirm(`Are you sure you want to delete "${name}"?`)) return;
+    
     try {
-      await axios.delete(`/api/products/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+      // We don't need to save the response, we just need the request to succeed
+      await axios.delete(`/api/products/${id}`, { 
+        headers: { Authorization: `Bearer ${token}` } 
+      });
+      
       toast.success('Product deleted!');
       setProducts(products.filter(p => p.id !== id));
+      
     } catch (error) {
       console.error('Delete error:', error);
-      toast.error('Failed to delete product');
+      // ✅ This will now show the EXACT backend error (e.g., "Forbidden" if not logged in as ADMIN)
+      const errorMsg = error.response?.data?.error || 'Failed to delete product. Ensure you are logged in as ADMIN.';
+      toast.error(errorMsg);
     }
   };
 
@@ -115,7 +124,6 @@ const Products = () => {
             className="flex-1 md:w-64 px-4 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" 
           />
           
-          {/* 👇 NEW EXPORT BUTTON 👇 */}
           <button 
             onClick={() => downloadCSV(products, 'inventory_report')}
             className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2 whitespace-nowrap"

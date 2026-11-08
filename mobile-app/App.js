@@ -128,7 +128,6 @@ function UserTabs() {
     <Tab.Navigator tabBar={props => <UserTabBar {...props} />} screenOptions={{ headerShown: false }}>
       <Tab.Screen name="Shop" component={ShopScreen} options={{ tabBarIcon: () => <Text style={styles.tabIcon}>🛍️</Text> }} />
       <Tab.Screen name="Orders" component={OrdersScreen} options={{ tabBarIcon: () => <Text style={styles.tabIcon}>📋</Text> }} />
-      {/* ✅ SWAPPED: Cart is now 3rd, Profile is 4th */}
       <Tab.Screen name="Cart" component={CartScreen} options={{ tabBarIcon: () => <Text style={styles.tabIcon}>🛒</Text> }} />
       <Tab.Screen name="Profile" component={ProfileEditScreen} options={{ tabBarIcon: () => <Text style={styles.tabIcon}>👤</Text> }} />
     </Tab.Navigator>
@@ -136,7 +135,21 @@ function UserTabs() {
 }
 
 // ==========================================
-// 4. ROOT APP NAVIGATOR
+// 4. ADMIN DRAWER NAVIGATOR (Wrapped properly)
+// ==========================================
+function AdminDrawer() {
+  return (
+    <Drawer.Navigator drawerContent={(props) => <AdminDrawerContent {...props} />} screenOptions={{ headerShown: true, drawerActiveTintColor: '#2563eb', drawerStyle: { backgroundColor: '#fff', width: 280 } }}>
+      <Drawer.Screen name="AdminHome" component={AdminTabs} options={{ drawerLabel: 'Dashboard', drawerIcon: () => <Text style={{fontSize: 22}}>🏠</Text> }} />
+      <Drawer.Screen name="Cart" component={CartScreen} options={{ drawerLabel: 'Shopping Cart', drawerIcon: () => <Text style={{fontSize: 22}}>🛒</Text> }} />
+      <Drawer.Screen name="UserManagement" component={UsersScreen} options={{ drawerLabel: 'User Management', drawerIcon: () => <Text style={{fontSize: 22}}>👥</Text> }} />
+      <Drawer.Screen name="EditProfile" component={ProfileEditScreen} options={{ drawerLabel: 'Edit Profile', drawerIcon: () => <Text style={{fontSize: 22}}>⚙️</Text> }} />
+    </Drawer.Navigator>
+  );
+}
+
+// ==========================================
+// 5. ROOT APP NAVIGATOR
 // ==========================================
 export default function App() {
   const { loadUser, isLoading, token, user } = useAuthStore();
@@ -154,13 +167,9 @@ export default function App() {
             <Stack.Screen name="Login" component={LoginScreen} />
           ) : (
             <>
+              {/* ✅ FIXED: Both Admin and User navigators are now properly wrapped in Stack.Screen */}
               {isAdmin ? (
-                <Drawer.Navigator drawerContent={(props) => <AdminDrawerContent {...props} />} screenOptions={{ headerShown: true, drawerActiveTintColor: '#2563eb', drawerStyle: { backgroundColor: '#fff', width: 280 } }}>
-                  <Drawer.Screen name="AdminHome" component={AdminTabs} options={{ drawerLabel: 'Dashboard', drawerIcon: () => <Text style={{fontSize: 22}}>🏠</Text> }} />
-                  <Drawer.Screen name="Cart" component={CartScreen} options={{ drawerLabel: 'Shopping Cart', drawerIcon: () => <Text style={{fontSize: 22}}>🛒</Text> }} />
-                  <Drawer.Screen name="UserManagement" component={UsersScreen} options={{ drawerLabel: 'User Management', drawerIcon: () => <Text style={{fontSize: 22}}>👥</Text> }} />
-                  <Drawer.Screen name="EditProfile" component={ProfileEditScreen} options={{ drawerLabel: 'Edit Profile', drawerIcon: () => <Text style={{fontSize: 22}}>⚙️</Text> }} />
-                </Drawer.Navigator>
+                <Stack.Screen name="AdminDrawer" component={AdminDrawer} />
               ) : (
                 <Stack.Screen name="UserTabs" component={UserTabs} />
               )}
