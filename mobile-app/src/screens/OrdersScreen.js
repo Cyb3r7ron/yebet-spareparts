@@ -1,31 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { 
   View, Text, FlatList, StyleSheet, ActivityIndicator, 
-  TouchableOpacity, RefreshControl, Modal, ScrollView, Alert
+  TouchableOpacity, RefreshControl, Modal, ScrollView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import axios from 'axios';
-import { useAuthStore } from '../store/authStore';
 
 const OrdersScreen = ({ navigation }) => {
-  const { user } = useAuthStore();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
 
-  useEffect(() => {
-    navigation.getParent()?.setOptions({
-      headerLeft: () => (
-        <TouchableOpacity onPress={() => navigation.getParent()?.openDrawer()} style={{ marginLeft: 15 }}>
-          <Text style={{ fontSize: 24 }}>☰</Text>
-        </TouchableOpacity>
-      ),
-      headerTitle: 'All Orders',
-      headerStyle: { backgroundColor: '#fff' },
-    });
-  }, [navigation]);
+  // ✅ REMOVED: The broken setOptions useEffect
 
   const fetchOrders = async () => {
     try {
@@ -43,36 +31,6 @@ const OrdersScreen = ({ navigation }) => {
   useEffect(() => { fetchOrders(); }, []);
   const onRefresh = () => { setRefreshing(true); fetchOrders(); };
 
-  // ✅ Update order status
-    // ✅ UPDATED: Better error logging
-  const handleStatusChange = async (orderId, newStatus) => {
-    try {
-      console.log(`Updating Order ${orderId} to ${newStatus}...`);
-      
-      // Try PUT request
-      await axios.put(`/api/orders/${orderId}`, { status: newStatus });
-      
-      // Update local state instantly
-      setOrders(orders.map(order => 
-        order.id === orderId ? { ...order, status: newStatus } : order
-      ));
-      Alert.alert('Success', `Order status updated to ${newStatus}`);
-    } catch (error) {
-      console.error('Update status error:', error.response?.data || error.message);
-      
-      // Show the EXACT backend error
-      const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Failed to update status.';
-      Alert.alert('Update Failed', errorMsg);
-    }
-  };
-
-  // ✅ Show order details modal
-  const handleViewDetails = (order) => {
-    setSelectedOrder(order);
-    setModalVisible(true);
-  };
-
-  // ✅ Color coding for statuses
   const getStatusStyle = (status) => {
     const s = status?.toLowerCase();
     if (s === 'completed' || s === 'delivered') return { bg: '#d1fae5', text: '#065f46' };
@@ -82,25 +40,27 @@ const OrdersScreen = ({ navigation }) => {
     return { bg: '#e5e7eb', text: '#374151' };
   };
 
-  // ✅ Truncate order ID to last 6 characters (like web version)
   const getShortOrderId = (id) => {
     if (!id) return 'N/A';
     const idStr = id.toString();
     return idStr.length > 6 ? '#' + idStr.slice(-6).toUpperCase() : '#' + idStr.toUpperCase();
   };
 
+  const handleViewDetails = (order) => {
+    setSelectedOrder(order);
+    setModalVisible(true);
+  };
+
   const renderOrder = ({ item }) => {
     const statusStyle = getStatusStyle(item.status);
     const date = new Date(item.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const shortId = getShortOrderId(item.id);
-    const customerName = item.customerName || item.user?.name || 'Unknown';
+    const customerName = item.customerName || item.user?.name || 'Customer';
     const customerEmail = item.customerEmail || item.user?.email || '';
-    
     const totalItems = item.items ? item.items.reduce((sum, i) => sum + i.quantity, 0) : 0;
 
     return (
       <View style={styles.orderCard}>
-        {/* Header: Short ID, Customer, Date */}
         <View style={styles.orderHeader}>
           <View style={styles.orderInfo}>
             <Text style={styles.orderId}>{shortId}</Text>
@@ -110,69 +70,32 @@ const OrdersScreen = ({ navigation }) => {
           <View style={styles.headerRight}>
             <Text style={styles.orderDate}>{date}</Text>
             <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
-              <Text style={[styles.statusText, { color: statusStyle.text }]}>
-                {item.status || 'Pending'}
-              </Text>
+              <Text style={[styles.statusText, { color: statusStyle.text }]}>{item.status || 'Pending'}</Text>
             </View>
           </View>
         </View>
-
         <View style={styles.divider} />
-
-        {/* Items Summary */}
         <View style={styles.itemsSummary}>
           <Text style={styles.itemsLabel}>{totalItems} item{totalItems !== 1 ? 's' : ''}</Text>
           <Text style={styles.totalAmount}>${Number(item.totalAmount).toFixed(2)}</Text>
         </View>
-
         <View style={styles.divider} />
-
-        {/* Action Buttons */}
-        <View style={styles.actionRow}>
-          {/* Status Dropdown (Admin only) */}
-          {user?.role === 'ADMIN' && (
-            <View style={styles.statusDropdown}>
-              <Text style={styles.dropdownLabel}>Status:</Text>
-              <View style={styles.dropdownButtons}>
-                {['Pending', 'Paid', 'Delivered', 'Cancelled'].map((status) => (
-                  <TouchableOpacity
-                    key={status}
-                    style={[
-                      styles.dropdownBtn,
-                      item.status?.toLowerCase() === status.toLowerCase() && styles.dropdownBtnActive
-                    ]}
-                    onPress={() => handleStatusChange(item.id, status)}
-                  >
-                    <Text style={[
-                      styles.dropdownBtnText,
-                      item.status?.toLowerCase() === status.toLowerCase() && styles.dropdownBtnTextActive
-                    ]}>
-                      {status}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          )}
-
-          {/* View Details Button */}
-          <TouchableOpacity 
-            style={styles.viewDetailsBtn}
-            onPress={() => handleViewDetails(item)}
-          >
-            <Text style={styles.viewDetailsText}>View Details</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity style={styles.viewDetailsBtn} onPress={() => handleViewDetails(item)}>
+          <Text style={styles.viewDetailsText}>View Details</Text>
+        </TouchableOpacity>
       </View>
     );
   };
 
-  if (loading) {
-    return <View style={styles.center}><ActivityIndicator size="large" color="#2563eb" /></View>;
-  }
+  if (loading) return <View style={styles.center}><ActivityIndicator size="large" color="#2563eb" /></View>;
 
   return (
     <View style={styles.container}>
+      {/* ✅ NEW: Custom Header to fix stacking issue */}
+      <SafeAreaView style={styles.headerContainer}>
+        <Text style={styles.headerTitle}>My Orders</Text>
+      </SafeAreaView>
+
       <FlatList
         data={orders}
         keyExtractor={(item) => item.id}
@@ -188,44 +111,27 @@ const OrdersScreen = ({ navigation }) => {
         }
       />
 
-      {/* ✅ Order Details Modal */}
-      <Modal
-        visible={modalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setModalVisible(false)}
-      >
+      <Modal visible={modalVisible} animationType="slide" transparent={true} onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             {selectedOrder && (
               <>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>Order Details {getShortOrderId(selectedOrder.id)}</Text>
-                  <TouchableOpacity onPress={() => setModalVisible(false)}>
-                    <Text style={styles.closeIcon}>✕</Text>
-                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setModalVisible(false)}><Text style={styles.closeIcon}>✕</Text></TouchableOpacity>
                 </View>
-
                 <ScrollView style={styles.modalBody}>
-                  {/* Customer Info */}
                   <View style={styles.modalSection}>
                     <Text style={styles.modalLabel}>Customer</Text>
                     <Text style={styles.modalValue}>{selectedOrder.customerName || selectedOrder.user?.name || 'Unknown'}</Text>
-                    {selectedOrder.customerEmail || selectedOrder.user?.email ? (
-                      <Text style={styles.modalSubValue}>{selectedOrder.customerEmail || selectedOrder.user?.email}</Text>
-                    ) : null}
+                    {selectedOrder.customerEmail || selectedOrder.user?.email ? <Text style={styles.modalSubValue}>{selectedOrder.customerEmail || selectedOrder.user?.email}</Text> : null}
                   </View>
-
                   <View style={styles.modalSection}>
                     <Text style={styles.modalLabel}>Status</Text>
                     <View style={[styles.statusBadge, { backgroundColor: getStatusStyle(selectedOrder.status).bg }]}>
-                      <Text style={[styles.statusText, { color: getStatusStyle(selectedOrder.status).text }]}>
-                        {selectedOrder.status || 'Pending'}
-                      </Text>
+                      <Text style={[styles.statusText, { color: getStatusStyle(selectedOrder.status).text }]}>{selectedOrder.status || 'Pending'}</Text>
                     </View>
                   </View>
-
-                  {/* Items List */}
                   <Text style={styles.modalSectionTitle}>Items</Text>
                   {selectedOrder.items && selectedOrder.items.map((orderItem, index) => (
                     <View key={index} style={styles.modalItemRow}>
@@ -236,20 +142,13 @@ const OrdersScreen = ({ navigation }) => {
                       <Text style={styles.modalItemPrice}>${(orderItem.price * orderItem.quantity).toFixed(2)}</Text>
                     </View>
                   ))}
-
                   <View style={styles.modalDivider} />
-
-                  {/* Total */}
                   <View style={styles.modalTotalRow}>
                     <Text style={styles.modalTotalLabel}>Total Amount</Text>
                     <Text style={styles.modalTotalAmount}>${Number(selectedOrder.totalAmount).toFixed(2)}</Text>
                   </View>
                 </ScrollView>
-
-                <TouchableOpacity 
-                  style={styles.closeModalBtn}
-                  onPress={() => setModalVisible(false)}
-                >
+                <TouchableOpacity style={styles.closeModalBtn} onPress={() => setModalVisible(false)}>
                   <Text style={styles.closeModalText}>Close</Text>
                 </TouchableOpacity>
               </>
@@ -264,12 +163,12 @@ const OrdersScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f3f4f6' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  list: { padding: 20, paddingBottom: 40 },
+  // ✅ NEW Header Styles
+  headerContainer: { backgroundColor: '#fff', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
+  headerTitle: { fontSize: 22, fontWeight: 'bold', color: '#1f2937' },
   
-  orderCard: {
-    backgroundColor: '#fff', borderRadius: 12, marginBottom: 16, padding: 16,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
-  },
+  list: { padding: 20, paddingBottom: 40 },
+  orderCard: { backgroundColor: '#fff', borderRadius: 12, marginBottom: 16, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
   orderHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
   orderInfo: { flex: 1 },
   orderId: { fontSize: 16, fontWeight: 'bold', color: '#1f2937' },
@@ -279,30 +178,16 @@ const styles = StyleSheet.create({
   orderDate: { fontSize: 12, color: '#6b7280', marginBottom: 4 },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   statusText: { fontSize: 12, fontWeight: 'bold', textTransform: 'capitalize' },
-  
   divider: { height: 1, backgroundColor: '#f3f4f6', marginVertical: 12 },
   itemsSummary: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   itemsLabel: { fontSize: 14, color: '#6b7280', fontWeight: '500' },
   totalAmount: { fontSize: 18, fontWeight: 'bold', color: '#2563eb' },
-  
-  actionRow: { marginTop: 8 },
-  statusDropdown: { marginBottom: 12 },
-  dropdownLabel: { fontSize: 12, color: '#6b7280', fontWeight: '600', marginBottom: 6 },
-  dropdownButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  dropdownBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, backgroundColor: '#f3f4f6' },
-  dropdownBtnActive: { backgroundColor: '#2563eb' },
-  dropdownBtnText: { fontSize: 11, fontWeight: '600', color: '#6b7280' },
-  dropdownBtnTextActive: { color: '#fff' },
-  
-  viewDetailsBtn: { backgroundColor: '#dbeafe', paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
+  viewDetailsBtn: { backgroundColor: '#dbeafe', paddingVertical: 12, borderRadius: 8, alignItems: 'center', marginTop: 4 },
   viewDetailsText: { color: '#2563eb', fontSize: 14, fontWeight: 'bold' },
-  
   emptyContainer: { marginTop: 50, alignItems: 'center' },
   emptyIcon: { fontSize: 48, marginBottom: 12 },
   emptyText: { fontSize: 16, color: '#6b7280', fontWeight: 'bold' },
   emptySub: { fontSize: 14, color: '#9ca3af', marginTop: 4 },
-
-  // Modal Styles
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
   modalContent: { backgroundColor: '#fff', borderRadius: 16, maxHeight: '80%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
