@@ -258,3 +258,24 @@ router.patch('/:id/status', authenticate, authorize('ADMIN', 'MANAGER'), async (
 });
 
 module.exports = router;
+
+// ========================================
+// ROUTE: UPDATE ORDER STATUS (Admin/Manager Only)
+// ========================================
+router.put('/:id', authenticate, authorize('ADMIN', 'MANAGER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    // Update the order in the database
+    const order = await prisma.order.update({
+      where: { id },
+      data: { status }
+    });
+
+    res.json({ success: true, message: 'Order status updated!', order });
+  } catch (error) {
+    console.error('Update order error:', error);
+    res.status(500).json({ error: 'Failed to update order status.' });
+  }
+});

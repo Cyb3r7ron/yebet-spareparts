@@ -1,8 +1,10 @@
+import 'react-native-gesture-handler';
 import React, { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createDrawerNavigator, DrawerContentScrollView, DrawerItemList } from '@react-navigation/drawer';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuthStore } from './src/store/authStore';
@@ -10,55 +12,81 @@ import LoginScreen from './src/screens/LoginScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import InventoryScreen from './src/screens/InventoryScreen';
 import ScannerScreen from './src/screens/ScannerScreen';
-import ProfileScreen from './src/screens/ProfileScreen';
 import AddProductScreen from './src/screens/AddProductScreen';
+import EditProductScreen from './src/screens/EditProductScreen';
+import CartScreen from './src/screens/CartScreen';
+import OrdersScreen from './src/screens/OrdersScreen';
+import UsersScreen from './src/screens/UsersScreen';
+import ProfileEditScreen from './src/screens/ProfileEditScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
+const Drawer = createDrawerNavigator();
 
-// ✅ FIXED: CUSTOM TAB BAR COMPONENT
-function CustomTabBar({ state, descriptors, navigation }) {
+// ✅ CUSTOM DRAWER SIDEBAR (Cleaned up since Orders is now in the bottom bar)
+function CustomDrawerContent(props) {
+  const { user, logout } = useAuthStore();
   const insets = useSafeAreaInsets();
 
+  return (
+    <DrawerContentScrollView {...props} contentContainerStyle={{ paddingTop: insets.top }}>
+      <View style={styles.drawerHeader}>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>{user?.firstName?.[0]}{user?.lastName?.[0]}</Text>
+        </View>
+        <Text style={styles.userName}>{user?.firstName} {user?.lastName}</Text>
+        <Text style={styles.userRole}>{user?.role}</Text>
+      </View>
+
+      <DrawerItemList {...props} />
+
+      <View style={styles.drawerFooter}>
+        <TouchableOpacity 
+          style={styles.logoutButton} 
+          onPress={async () => {
+            await logout();
+            props.navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+          }}
+        >
+          <Text style={styles.logoutIcon}>🚪</Text>
+          <Text style={styles.logoutText}>Sign Out</Text>
+        </TouchableOpacity>
+      </View>
+    </DrawerContentScrollView>
+  );
+}
+
+// ✅ 5-BUTTON BOTTOM TAB BAR
+function CustomTabBar({ state, descriptors, navigation }) {
+  const insets = useSafeAreaInsets();
   return (
     <View style={[styles.tabBarContainer, { paddingBottom: insets.bottom }]}>
       {state.routes.map((route, index) => {
         const isFocused = state.index === index;
         const { options } = descriptors[route.key];
 
-        // ✅ THE SPECIAL MIDDLE "ADD" BUTTON
+        // The Middle "+" Button
         if (route.name === 'AddProduct') {
           return (
             <View key={route.key} style={styles.fabWrapper}>
-              <TouchableOpacity
-                onPress={() => navigation.navigate(route.name)}
-                style={styles.fabTab}
-              >
+              <TouchableOpacity onPress={() => navigation.navigate(route.name)} style={styles.fabTab}>
                 <Text style={styles.fabTabText}>+</Text>
               </TouchableOpacity>
             </View>
           );
         }
 
-        // ✅ STANDARD TABS (Fixed Icon Rendering)
-        let label = route.name;
+        // Label mapping for the 5 tabs
+        let label = 'Menu';
         if (route.name === 'Dashboard') label = 'Home';
         if (route.name === 'Inventory') label = 'Parts';
+        if (route.name === 'Orders') label = 'Orders';
         if (route.name === 'Scanner') label = 'Scan';
-        if (route.name === 'Profile') label = 'Profile';
 
         return (
-          <TouchableOpacity
-            key={route.key}
-            onPress={() => navigation.navigate(route.name)}
-            style={styles.standardTab}
-          >
-            {/* ✅ FIX: Render the icon directly without wrapping it in a Text tag */}
+          <TouchableOpacity key={route.key} onPress={() => navigation.navigate(route.name)} style={styles.standardTab}>
             {options.tabBarIcon ? options.tabBarIcon({ focused: isFocused }) : null}
-            
-            <Text style={[styles.tabLabel, { color: isFocused ? '#2563eb' : '#9ca3af' }]}>
-              {label}
-            </Text>
+            <Text style={[styles.tabLabel, { color: isFocused ? '#2563eb' : '#9ca3af' }]}>{label}</Text>
           </TouchableOpacity>
         );
       })}
@@ -68,43 +96,45 @@ function CustomTabBar({ state, descriptors, navigation }) {
 
 function MainTabs() {
   return (
-    <Tab.Navigator
-      tabBar={props => <CustomTabBar {...props} />}
-      screenOptions={{ headerShown: false }}
-    >
-      <Tab.Screen 
-        name="Dashboard" 
-        component={DashboardScreen} 
-        options={{ tabBarIcon: () => <Text style={styles.tabIcon}>🏠</Text> }} 
-      />
-      <Tab.Screen 
-        name="Inventory" 
-        component={InventoryScreen} 
-        options={{ tabBarIcon: () => <Text style={styles.tabIcon}>📦</Text> }} 
-      />
-      {/* ✅ The middle button */}
-      <Tab.Screen 
-        name="AddProduct" 
-        component={AddProductScreen} 
-        options={{ tabBarLabel: 'Add' }} 
-      />
-      <Tab.Screen 
-        name="Scanner" 
-        component={ScannerScreen} 
-        options={{ tabBarIcon: () => <Text style={styles.tabIcon}>📷</Text> }} 
-      />
-      <Tab.Screen 
-        name="Profile" 
-        component={ProfileScreen} 
-        options={{ tabBarIcon: () => <Text style={styles.tabIcon}>⚙️</Text> }} 
-      />
+    <Tab.Navigator tabBar={props => <CustomTabBar {...props} />} screenOptions={{ headerShown: false }}>
+      <Tab.Screen name="Dashboard" component={DashboardScreen} options={{ tabBarIcon: () => <Text style={styles.tabIcon}>🏠</Text> }} />
+      <Tab.Screen name="Inventory" component={InventoryScreen} options={{ tabBarIcon: () => <Text style={styles.tabIcon}>📦</Text> }} />
+      <Tab.Screen name="AddProduct" component={AddProductScreen} options={{ tabBarLabel: 'Add' }} />
+      <Tab.Screen name="Orders" component={OrdersScreen} options={{ tabBarIcon: () => <Text style={styles.tabIcon}>📋</Text> }} />
+      <Tab.Screen name="Scanner" component={ScannerScreen} options={{ tabBarIcon: () => <Text style={styles.tabIcon}>📷</Text> }} />
     </Tab.Navigator>
   );
 }
 
+// ✅ DRAWER NAVIGATOR
+function AppDrawer() {
+  const { user } = useAuthStore();
+  return (
+    <Drawer.Navigator 
+      drawerContent={(props) => <CustomDrawerContent {...props} />}
+      screenOptions={{
+        headerShown: true,
+        drawerActiveTintColor: '#2563eb',
+        drawerInactiveTintColor: '#4b5563',
+        drawerStyle: { backgroundColor: '#fff', width: 280 },
+      }}
+    >
+      <Drawer.Screen name="HomeTabs" component={MainTabs} options={{ drawerLabel: 'Dashboard', drawerIcon: () => <Text style={{fontSize: 22}}>🏠</Text> }} />
+      <Drawer.Screen name="Cart" component={CartScreen} options={{ drawerLabel: 'Shopping Cart', drawerIcon: () => <Text style={{fontSize: 22}}>🛒</Text> }} />
+      
+      {/* Only show User Management if the user is an ADMIN */}
+      {user?.role === 'ADMIN' && (
+        <Drawer.Screen name="UserManagement" component={UsersScreen} options={{ drawerLabel: 'User Management', drawerIcon: () => <Text style={{fontSize: 22}}>👥</Text> }} />
+      )}
+      
+      <Drawer.Screen name="EditProfile" component={ProfileEditScreen} options={{ drawerLabel: 'Edit Profile', drawerIcon: () => <Text style={{fontSize: 22}}>⚙️</Text> }} />
+    </Drawer.Navigator>
+  );
+}
+
+// ✅ ROOT APP
 export default function App() {
   const { loadUser, isLoading, token } = useAuthStore();
-
   useEffect(() => { loadUser(); }, []);
 
   if (isLoading) {
@@ -115,10 +145,13 @@ export default function App() {
     <SafeAreaProvider>
       <NavigationContainer>
         <Stack.Navigator screenOptions={{ headerShown: false }}>
-          {token ? (
-            <Stack.Screen name="MainTabs" component={MainTabs} />
-          ) : (
+          {!token ? (
             <Stack.Screen name="Login" component={LoginScreen} />
+          ) : (
+            <>
+              <Stack.Screen name="AppDrawer" component={AppDrawer} />
+              <Stack.Screen name="EditProduct" component={EditProductScreen} options={{ headerShown: false }} />
+            </>
           )}
         </Stack.Navigator>
       </NavigationContainer>
@@ -128,54 +161,21 @@ export default function App() {
 
 const styles = StyleSheet.create({
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f3f4f6' },
-  tabIcon: { fontSize: 24 }, // ✅ Base style for icons
+  tabIcon: { fontSize: 24 },
+  tabBarContainer: { flexDirection: 'row', backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 8 },
+  standardTab: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  tabLabel: { fontSize: 10, fontWeight: '600', marginTop: 4 }, // Slightly smaller font to fit 5 tabs
+  fabWrapper: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: -30 },
+  fabTab: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#2563eb', justifyContent: 'center', alignItems: 'center', shadowColor: '#2563eb', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 8, borderWidth: 4, borderColor: '#fff' },
+  fabTabText: { fontSize: 32, color: '#fff', fontWeight: '300', marginTop: -4 },
   
-  // Custom Tab Bar Styles
-  tabBarContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
-    paddingTop: 8,
-    // paddingBottom is handled dynamically by insets.bottom in the component
-  },
-  standardTab: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  tabLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    marginTop: 4,
-  },
-  
-  // The Elevated Middle Button
-  fabWrapper: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: -30, // Pulls the button up visually
-  },
-  fabTab: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#2563eb',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#2563eb',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    elevation: 8,
-    borderWidth: 4,
-    borderColor: '#fff', // Creates the cutout effect
-  },
-  fabTabText: {
-    fontSize: 32,
-    color: '#fff',
-    fontWeight: '300',
-    marginTop: -4,
-  }
+  drawerHeader: { padding: 20, borderBottomWidth: 1, borderBottomColor: '#f3f4f6', alignItems: 'center' },
+  avatar: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#2563eb', justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+  avatarText: { fontSize: 24, fontWeight: 'bold', color: '#fff' },
+  userName: { fontSize: 18, fontWeight: 'bold', color: '#1f2937' },
+  userRole: { fontSize: 14, color: '#2563eb', fontWeight: '600', marginTop: 4, textTransform: 'uppercase' },
+  drawerFooter: { marginTop: 'auto', padding: 20, borderTopWidth: 1, borderTopColor: '#f3f4f6' },
+  logoutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, borderRadius: 8, backgroundColor: '#fee2e2' },
+  logoutIcon: { fontSize: 20, marginRight: 8 },
+  logoutText: { color: '#ef4444', fontSize: 16, fontWeight: 'bold' }
 });
